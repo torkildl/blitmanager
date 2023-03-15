@@ -47,7 +47,7 @@ _start:
 
 		lea.l	our_level3,a0					* our level 3 handler
 		move.l	a0,$6c							* install level 3 handler
-		move.w	#$c040,INTENA(a6)				* activate level 3 BLIT interrupt
+		move.w	#$c060,INTENA(a6)				* activate level 3 BLIT interrupt and level 3 VERTB interrupt
 		move.w	#$83e0,DMACON(a6)				; Activate relevant DMA.
 		move.w	#$0200,BPLCON0(a6)
 		move.w	#$0337,COLOR00(a6)	
@@ -73,9 +73,15 @@ mainloop:
 		bsr.w	WaitRaster				;is below the Display Window.
 		debug_stop_idle
 
+		cmp.w	#100,framecounter
+		bne.s	.noaddblit
+		bsr bm_push_example_blits2
+
+.noaddblit
+
 		btst	#2,$dff016
 		bne.s	.notrmb
-		move.w	#$8040,INTREQ+CUSTOM
+		bsr		bm_push_example_blits2
 .waitrmb	
 		btst 	#2,$dff016
 		beq.s	.waitrmb
@@ -89,8 +95,10 @@ mainloop:
 
 checkmouse:
 		btst	#CIAB_GAMEPORT0,CIAA+ciapra
-		bne		mainloop
-
+		bne.s	.nolmb
+		move.w	#$8040,INTREQ+CUSTOM
+.nolmb
+		bra		mainloop
 exit:
 		move.w	#$7fff,DMACON(a6)			; disable all bits in DMACON
 		or.w	#$8200,(DMACONSave)			; Bit mask inversion for activation
@@ -127,6 +135,7 @@ our_level3:
 			bsr			bm_blit_from_queue
 			bra.s		.exit
 .vertb:			; Do stuff here in VBL
+			add.w		#1,framecounter
 			move.w		#(INTF_INTEN!INTF_VERTB),INTREQ(a5)
 			move.w		#(INTF_INTEN!INTF_VERTB),INTREQ(a5)
 			bra.s		.exit
@@ -136,7 +145,7 @@ our_level3:
 .exit:		movem.l	(a7)+,d0-d7/a0-a6
 therte:		rte
 
-
+framecounter: dc.w 0
 * BLITTER MANAGER ON LEVEL 3 INTERRUPT:
 * The system works like this:
 *	BLIT interrupt (level 3) is set up to the blittermanager code, and stack is initialized 
@@ -150,12 +159,34 @@ therte:		rte
 	* if no, reset queue pointer to start of queue
 
 	* queue format (longwords):
+	*  
+	* MGRCODE = 1 : Arbitrary blit
 	*		BLTSIZE+MGRCODE. BLTCON0/1, BLTAFWM/BLTALWM, BLTAMOD+BLTBMOD, BLTCMOD+BLTDMOD, BLTAPT, BLTBPT, BLTCPT, BLTDPT
+	*
+	* MGRCODE = 2 : Simple A-->D copy (and possibly shift/mask)
+	* 		BLTSIZE+MGRCODE, BLTCON0/1, BLTAFWM/BLTALWM, BLTAMOD+BLTDMOD, BLTAPT, BLTDPT
+	* MGRCODE = 3 : Line draw?
+	* MGRCODE = 4 : Cookie cut
+
+bm_push_example_blits2:
+			move.w	#(64*64)+4,d0				* BLTSIZE is one bitplane
+			swap	d0
+			move.w	#36,d0						* MGRCODE = 1 for simple A->D
+			move.l	#$09f00000,d1				* BLTCON0/1
+			move.l	#$ffffffff,d2				* MAsks
+			move.l	#(32*$10000)+32,d3
+			move.l	#(32*$10000)+32,d4						* no modulos
+			move.l	#0,a0						* C ptr?
+			move.l	#0,a1						* B ptr?
+			lea.l	source,a2
+			lea.l	destination,a3
+			adda.l	#(96*40)+16,a3				* +64, +64
+			bsr		bm_addqueue
 
 bm_push_example_blits:
 			move.w	#(64*64)+4,d0				* BLTSIZE is one bitplane
 			swap	d0
-			move.w	#1,d0						* MGRCODE = 1 for simple A->D
+			move.w	#36,d0						* MGRCODE = 1 for simple A->D
 			move.l	#$09f00000,d1				* BLTCON0/1
 			move.l	#$ffffffff,d2				* MAsks
 			move.l	#(32*$10000)+32,d3
@@ -169,7 +200,7 @@ bm_push_example_blits:
 
 			move.w	#(64*64)+4,d0				* BLTSIZE is one bitplane
 			swap	d0
-			move.w	#1,d0						* MGRCODE = 1 for simple A->D
+			move.w	#36,d0						* MGRCODE = 1 for simple A->D
 			move.l	#$09f00000,d1				* BLTCON0/1
 			move.l	#$ffffffff,d2				* MAsks
 			move.l	#(32*$10000)+32,d3
@@ -183,7 +214,7 @@ bm_push_example_blits:
 
 			move.w	#(64*64)+4,d0				* BLTSIZE is one bitplane
 			swap	d0
-			move.w	#1,d0						* MGRCODE = 1 for simple A->D
+			move.w	#36,d0						* MGRCODE = 1 for simple A->D
 			move.l	#$09f00000,d1				* BLTCON0/1
 			move.l	#$ffffffff,d2				* MAsks
 			move.l	#(32*$10000)+32,d3
@@ -197,7 +228,7 @@ bm_push_example_blits:
 
 			move.w	#(64*64)+4,d0				* BLTSIZE is one bitplane
 			swap	d0
-			move.w	#1,d0						* MGRCODE = 1 for simple A->D
+			move.w	#36,d0						* MGRCODE = 1 for simple A->D
 			move.l	#$09f00000,d1				* BLTCON0/1
 			move.l	#$ffffffff,d2				* MAsks
 			move.l	#(32*$10000)+32,d3
@@ -213,14 +244,16 @@ bm_push_example_blits:
 
 * blitter manager, add blit to queue:
 * d0 =? bltsize/mgrcode, d1 = bltcon0/1, d2 = masks, d3 = modulos, d4 = modulos, a0-a3 = ptrs
+* destroys a6, updates blitterqueue_ptr
 bm_addqueue:
 			move.w	#$0040,INTENA+CUSTOM	* turn off blitter interrupt, to avoid doubleworking the queue
 			move.l	blitterqueue_ptr,a6		* the queue is in a6
+			lea.l	(a6,d0.w),a6			* new end of blitter queue
 			cmp.l	#blitterqueue,a6
-			bne.s   .loadblit
-			THLTEST
-.loadblit	movem.l d0-d4/a0-a3,-(a6)		* load registers into the queue
-			move.l	a6,blitterqueue_ptr		* save the queue pointer
+			bgt.s   .loadblit
+			THLTEST							* blitterqueue full!
+.loadblit	move.l	a6,blitterqueue_ptr		* save the queue pointer
+			movem.l d0-d4/a0-a3,-(a6)		* load registers into the queue
 			move.w #$c040,INTENA+CUSTOM		* turn on blitter interrupt.
 			rts
 
@@ -257,14 +290,15 @@ bm_blit_from_queue:
 ; 			move.w	d0,(a5)					* start BLIT by writing to BLTSIZE
 			move.l a4,blitterqueue_ptr
 			rts
-.resetptr	move.l	a4,blitterqueue_ptr		* update pointer with new address
+.resetptr	move.l	#blitterqueue,blitterqueue_ptr		* update pointer with new address
 			rts
 
 BM_MAXBLITS = 10
 BM_QUEUESIZE = 9*4
 
 blitterqueue_blits:		dc.w	0											
-blitterqueue_ptr:		dc.l 	blitterqueue_end
+blitterqueue_ptr:		dc.l 	blitterqueue
+						dc.w	0
 blitterqueue:			blk.l	BM_QUEUESIZE*BM_MAXBLITS,0
 blitterqueue_end		dc.l	0
 	
